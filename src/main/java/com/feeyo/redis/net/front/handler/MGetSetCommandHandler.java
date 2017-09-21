@@ -2,12 +2,15 @@ package com.feeyo.redis.net.front.handler;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.feeyo.redis.engine.RedisEngineCtx;
 import com.feeyo.redis.engine.codec.RedisPipelineResponseDecoder;
+import com.feeyo.redis.engine.codec.RedisPipelineResponseDecoder.PipelineResponse;
 import com.feeyo.redis.engine.codec.RedisRequestType;
 import com.feeyo.redis.engine.codec.RedisResponseV3;
 import com.feeyo.redis.engine.manage.stat.StatUtil;
@@ -17,6 +20,9 @@ import com.feeyo.redis.net.front.RedisFrontConnection;
 import com.feeyo.redis.net.front.route.RouteResult;
 import com.feeyo.redis.net.front.route.RouteResultNode;
 import com.feeyo.redis.nio.util.TimeUtil;
+import com.feeyo.redis.virtualmemory.AppendMessageResult;
+import com.feeyo.redis.virtualmemory.Message;
+import com.feeyo.redis.virtualmemory.PutMessageResult;
 import com.feeyo.util.ProtoUtils;
 
 /**
@@ -85,19 +91,15 @@ public class MGetSetCommandHandler extends AbstractPipelineCommandHandler {
         @Override
         public void handleResponse(RedisBackendConnection backendCon, byte[] byteBuff) throws IOException {
 
-            int count = decoder.parseResponseCount(byteBuff);
-            if (count <= 0) {
+        	PipelineResponse pipelineResponse = decoder.parse(byteBuff);
+        	if ( !pipelineResponse.isOK() )
                 return;
-            }
 
             String address = backendCon.getPhysicalNode().getName();
-			byte[] data = decoder.getBuffer();
-			ResponseStatusCode state = recvResponse(address, count, data);
-
-			decoder.clearBuffer();
-
+            
+			ResponseStatusCode state = recvResponse(address, pipelineResponse.getCount(), pipelineResponse.getResps());
 			if ( state == ResponseStatusCode.ALL_NODE_COMPLETED ) {
-                List<RedisResponseV3> resps = margeResponses();
+                List<Object> resps = mergeResponses();
                 if (resps != null) {
                     try {
                         String password = frontCon.getPassword();
@@ -107,10 +109,20 @@ public class MGetSetCommandHandler extends AbstractPipelineCommandHandler {
                         long requestTimeMills = frontCon.getSession().getRequestTimeMills();
                         long responseTimeMills = TimeUtil.currentTimeMillis();
 
-
+                        // 长度
                         int len = 0;
-                        for (RedisResponseV3 resp : resps) {
-                            len += ((byte[])resp.data()).length;
+                        // 数据
+                        List<Message> newResponses = new ArrayList<Message>();
+                        for (Object resp : resps) {
+                        	if (resp instanceof PutMessageResult) {
+                        		PutMessageResult pmr = (PutMessageResult) resp;
+                        		AppendMessageResult amr = pmr.getAppendMessageResult();
+                        		Message msg = RedisEngineCtx.INSTANCE().getVirtualMemoryService().getMessage( amr.getWroteOffset(), amr.getWroteBytes() );
+                        		// 通知该消息已经被消费
+                        		RedisEngineCtx.INSTANCE().getVirtualMemoryService().markAsConsumed(amr.getWroteOffset(), amr.getWroteBytes());
+                        		newResponses.add(msg);
+                        		len += msg.getBody().length;
+                        	}
                         }
 
                         byte[] respCountInByte = ProtoUtils.convertIntToByteArray( rrs.getRequestCount() );
@@ -120,10 +132,10 @@ public class MGetSetCommandHandler extends AbstractPipelineCommandHandler {
                         buffer.put(respCountInByte);
                         buffer.put("\r\n".getBytes());
 
-                        for (RedisResponseV3 resp : resps) {
-                            buffer.put((byte[])resp.data());
+                        for (Message resp : newResponses) {
+                            buffer.put(resp.getBody());
                         }
-
+                        
                         RedisResponseV3 res = new RedisResponseV3((byte)'*', buffer.array());
                         int responseSize = this.writeToFront(frontCon,res,0);
 
@@ -168,20 +180,16 @@ public class MGetSetCommandHandler extends AbstractPipelineCommandHandler {
         @Override
         public void handleResponse(RedisBackendConnection backendCon, byte[] byteBuff) throws IOException {
 
-            int count = decoder.parseResponseCount(byteBuff);
-            if (count <= 0) {
+        	PipelineResponse pipelineResponse = decoder.parse(byteBuff);
+        	if ( !pipelineResponse.isOK() )
                 return;
-            }
 
             String address = backendCon.getPhysicalNode().getName();
-            byte[] data = decoder.getBuffer();
-            ResponseStatusCode state = recvResponse(address, count, data);
-
-            decoder.clearBuffer();
+            ResponseStatusCode state = recvResponse(address, pipelineResponse.getCount(), pipelineResponse.getResps());
 
             if ( state == ResponseStatusCode.ALL_NODE_COMPLETED ) {
             	
-                List<RedisResponseV3> resps = margeResponses();
+                List<Object> resps = mergeResponses();
                 if (resps != null) {
                     try {
                         String password = frontCon.getPassword();
@@ -191,8 +199,7 @@ public class MGetSetCommandHandler extends AbstractPipelineCommandHandler {
                         long requestTimeMills = frontCon.getSession().getRequestTimeMills();
                         long responseTimeMills = TimeUtil.currentTimeMillis();
 
-                        RedisResponseV3 res = new RedisResponseV3((byte)'+', "+OK\r\n".getBytes());
-                        int responseSize = this.writeToFront(frontCon,res,0);
+						int responseSize = this.writeToFront(frontCon, "+OK\r\n".getBytes(), 0);
 
                         // 后段链接释放
                         removeAndReleaseBackendConnection(backendCon);
