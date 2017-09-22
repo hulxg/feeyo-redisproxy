@@ -7,7 +7,6 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.feeyo.redis.engine.RedisEngineCtx;
 import com.feeyo.redis.engine.codec.RedisPipelineResponseDecoder;
 import com.feeyo.redis.engine.codec.RedisPipelineResponseDecoder.PipelineResponse;
 import com.feeyo.redis.engine.codec.RedisResponseDecoderV4;
@@ -19,9 +18,6 @@ import com.feeyo.redis.net.front.RedisFrontConnection;
 import com.feeyo.redis.net.front.route.RouteResult;
 import com.feeyo.redis.net.front.route.RouteResultNode;
 import com.feeyo.redis.nio.util.TimeUtil;
-import com.feeyo.redis.virtualmemory.AppendMessageResult;
-import com.feeyo.redis.virtualmemory.Message;
-import com.feeyo.redis.virtualmemory.PutMessageResult;
 import com.feeyo.util.ProtoUtils;
 
 /**
@@ -56,7 +52,7 @@ public class DelMultiKeyCommandHandler extends AbstractPipelineCommandHandler {
 			ByteBuffer buffer = getRequestBufferByRRN(rrn);
 			RedisBackendConnection backendConn = writeToBackend( rrn.getPhysicalNode(), buffer, new DelCallBack()); 
 			if ( backendConn != null )
-				this.addBackendConnection(backendConn);
+				this.holdBackendConnection(backendConn);
 		}
 		
 		// 埋点
@@ -117,11 +113,11 @@ public class DelMultiKeyCommandHandler extends AbstractPipelineCommandHandler {
 
 			String address = backendCon.getPhysicalNode().getName();
 			
-			ResponseStatusCode state = recvResponse(address, pipelineResponse.getCount(), pipelineResponse.getResps());
-			if ( state == ResponseStatusCode.ALL_NODE_COMPLETED ) {
+			ResponseMargeResult result = addAndMargeResponse(address, pipelineResponse.getCount(), pipelineResponse.getResps());
+			if ( result.getStatus() == ResponseMargeResult.ALL_NODE_COMPLETED ) {
 				
-				List<Object> resps = mergeResponses();
-				if (resps != null) {
+				List<DataOffset> offsets = result.getDataOffsets();
+				if (offsets != null) {
 					try {
 						String password = frontCon.getPassword();
 						String cmd = frontCon.getSession().getRequestCmd();
@@ -132,21 +128,15 @@ public class DelMultiKeyCommandHandler extends AbstractPipelineCommandHandler {
 						
 						int okCount = 0;
 						
-						for (Object resp : resps) {
-							if (resp instanceof PutMessageResult) {
-								PutMessageResult pmr = (PutMessageResult) resp;
-								AppendMessageResult amr = pmr.getAppendMessageResult();
-								Message msg = RedisEngineCtx.INSTANCE().getVirtualMemoryService().getMessage( amr.getWroteOffset(), amr.getWroteBytes() );
-								// 通知该消息已经被消费
-								RedisEngineCtx.INSTANCE().getVirtualMemoryService().markAsConsumed(amr.getWroteOffset(), amr.getWroteBytes());
-								RedisResponseV3 response = responseDecoder.decode( msg.getBody() ).get(0);
-								if ( response.is( (byte)':') ) {
-									byte[] _buf1 = (byte[])response.data();
-									byte[] buf2 = new byte[ _buf1.length - 1 ];  // type+data+\r\n  ->  data+\r\n
-									System.arraycopy(_buf1, 1, buf2, 0, buf2.length);
-									int c = readInt( buf2 );
-									okCount += c;
-								}
+						for (DataOffset offset : offsets) {
+							byte[] data = offset.getData();
+							RedisResponseV3 response = responseDecoder.decode( data ).get(0);
+							if ( response.is( (byte)':') ) {
+								byte[] _buf1 = (byte[])response.data();
+								byte[] buf2 = new byte[ _buf1.length - 1 ];  // type+data+\r\n  ->  data+\r\n
+								System.arraycopy(_buf1, 1, buf2, 0, buf2.length);
+								int c = readInt( buf2 );
+								okCount += c;
 							}
 						}
 						
@@ -154,7 +144,7 @@ public class DelMultiKeyCommandHandler extends AbstractPipelineCommandHandler {
 	                    int responseSize = this.writeToFront(frontCon, newResp, 0);
 
 						// 释放
-						removeAndReleaseBackendConnection(backendCon);
+						releaseBackendConnection(backendCon);
 
 						// 数据收集
 						StatUtil.collect(password, cmd, key, requestSize, responseSize,
@@ -175,12 +165,12 @@ public class DelMultiKeyCommandHandler extends AbstractPipelineCommandHandler {
 					}
 				}
 
-			} else if ( state == ResponseStatusCode.THE_NODE_COMPLETED  ) {
+			} else if ( result.getStatus() == ResponseMargeResult.THE_NODE_COMPLETED  ) {
 				
 				// 如果此后端节点数据已经返回完毕，则释放链接
-				removeAndReleaseBackendConnection(backendCon);
+				releaseBackendConnection(backendCon);
 				
-			} else if ( state == ResponseStatusCode.ERROR ) {
+			} else if ( result.getStatus() == ResponseMargeResult.ERROR ) {
 				// 添加回复到虚拟内存中出错。
 				responseAppendError();
 			}
