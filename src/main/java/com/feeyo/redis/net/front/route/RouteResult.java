@@ -1,8 +1,8 @@
 package com.feeyo.redis.net.front.route;
 
 import com.feeyo.redis.engine.codec.RedisRequest;
-import com.feeyo.redis.engine.codec.RedisRequestPolicy;
 import com.feeyo.redis.engine.codec.RedisRequestType;
+import com.feeyo.redis.net.front.handler.segment.Segment;
 
 import java.util.List;
 
@@ -12,25 +12,23 @@ import java.util.List;
  *
  */
 public class RouteResult {
-	
+	 
+
 	private final RedisRequestType requestType;
 	
 	private final List<RedisRequest> requests;
-	private final List<RedisRequestPolicy> requestPolicys;
 	
-	private final List<Integer> autoResponseIndexs;			// 需要自动应答的 request index 集合
 	private final List<RouteResultNode> nodes;				// 封装后的路由请求，包含路由到的节点和 分组后的请求 index 集合
+	
+	private List<Integer> autoResponseIndexs;				// 需要自动应答的 request index 集合
+	private List<Segment> segments;
     
-    
-	public RouteResult(RedisRequestType requestType, List<RedisRequest> requests, List<RedisRequestPolicy> requestPolicys, 
-			List<RouteResultNode> nodes, List<Integer> autoResponseIndexs) {
+	public RouteResult(RedisRequestType requestType, List<RedisRequest> requests, List<RouteResultNode> nodes) {
 		
 		this.requestType = requestType;
 		this.requests = requests;
-		this.requestPolicys = requestPolicys;
 		
 		this.nodes = nodes;
-		this.autoResponseIndexs = autoResponseIndexs;
 	}
 
 	public RedisRequestType getRequestType() {
@@ -41,16 +39,25 @@ public class RouteResult {
 		return requests;
 	}
 
-	public List<RedisRequestPolicy> getRequestPolicys() {
-		return requestPolicys;
+	
+	public List<RouteResultNode> getRouteResultNodes() {
+		return nodes;
 	}
 	
 	public List<Integer> getAutoResponseIndexs() {
 		return autoResponseIndexs;
 	}
 	
-	public List<RouteResultNode> getRouteResultNodes() {
-		return nodes;
+	public void setAutoResponseIndexs(List<Integer> autoResponseIndexs) {
+		this.autoResponseIndexs = autoResponseIndexs;
+	}
+
+	public void setSegments(List<Segment> segments) {
+		this.segments = segments;
+	}
+
+	public  List<Segment> getSegments() {
+		return segments;
 	}
 
 	// 请求数
@@ -83,7 +90,6 @@ public class RouteResult {
 	    }
 	    
 	    requests.clear();
-	    requestPolicys.clear();
 	    autoResponseIndexs.clear();
 	    nodes.clear();
 	}

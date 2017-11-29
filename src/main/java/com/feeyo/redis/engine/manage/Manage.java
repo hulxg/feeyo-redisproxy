@@ -24,10 +24,12 @@ import org.slf4j.LoggerFactory;
 import com.feeyo.redis.config.loader.zk.ZkClientManage;
 import com.feeyo.redis.engine.RedisEngineCtx;
 import com.feeyo.redis.engine.codec.RedisRequest;
+import com.feeyo.redis.engine.manage.stat.BigKeyCollector.BigKey;
+import com.feeyo.redis.engine.manage.stat.BigLengthCollector.BigLength;
+import com.feeyo.redis.engine.manage.stat.CmdAccessCollector.Command;
+import com.feeyo.redis.engine.manage.stat.NetFlowCollector.UserNetFlow;
 import com.feeyo.redis.engine.manage.stat.StatUtil;
 import com.feeyo.redis.engine.manage.stat.StatUtil.AccessStatInfoResult;
-import com.feeyo.redis.engine.manage.stat.StatUtil.BigKey;
-import com.feeyo.redis.engine.manage.stat.StatUtil.Command;
 import com.feeyo.redis.net.backend.RedisBackendConnection;
 import com.feeyo.redis.net.backend.callback.DirectTransTofrontCallBack;
 import com.feeyo.redis.net.backend.pool.AbstractPool;
@@ -101,12 +103,14 @@ public class Manage {
 	 *  SHOW USER_CONN
 	 *  SHOW BUFFER
 	 *  SHOW BIGKEY
+	 *  SHOW BIGLENGTH
 	 *  SHOW CMD
 	 *  SHOW VER
 	 *  SHOW NET_IO 该指令兼容过去的 SHOW NETBYTES
 	 *  SHOW VM
 	 *  SHOW POOL
 	 *  SHOW COST
+	 *  SHOW USER_DAY_NET_IO
 	 *  
 	 *  SHOW LOG_ERROR
 	 *  SHOW LOG_WARN
@@ -235,7 +239,7 @@ public class Manage {
 					List<Object> lines = new ArrayList<Object>();		
 					
 					long sum = 0;
-					Set<Entry<String, Command>> entrys = StatUtil.getCommandStats();
+					Set<Entry<String, Command>> entrys = StatUtil.getCommandCountMap().entrySet();
 					for (Entry<String, Command> entry : entrys) {	
 						Command parent = entry.getValue();
 						StringBuffer sBuffer = new StringBuffer();	
@@ -484,7 +488,7 @@ public class Manage {
 				} else if ( arg2.equalsIgnoreCase("BIGKEY") ) {
 					
 					List<String> lines = new ArrayList<String>();						
-					Collection<Entry<String, BigKey>> entrys = StatUtil.getBigKeyStats().entrySet();
+					Collection<Entry<String, BigKey>> entrys = StatUtil.getBigKeyMap().entrySet();
 					for(Entry<String, BigKey> e : entrys) {
 						BigKey bigkey = e.getValue();
 						StringBuffer sBuffer = new StringBuffer();
@@ -608,9 +612,41 @@ public class Manage {
 						}
 					}
 					return encode(lines);
+				
+				//SHOW USER_DAY_NET_IO
+				} else if ( arg2.equalsIgnoreCase("USER_DAY_NET_IO") ) {
+					
+					List<String> lines = new ArrayList<String>();
+					StringBuffer titleLine = new StringBuffer();
+					titleLine.append("User").append("         ");
+					titleLine.append("NetIn").append("         ");
+					titleLine.append("NetOut");
+					lines.add(titleLine.toString());
+					
+					long totalNetIn = 0;
+					long totalNetOut = 0;
+					for (Map.Entry<String, UserNetFlow> entry : StatUtil.getUserFlowSet()) { 
+						if (!StatUtil.STAT_KEY.equals(entry.getKey())) {
+							StringBuffer sb = new StringBuffer();
+							UserNetFlow userNetIo = entry.getValue();
+							sb.append(userNetIo.password).append("  ");
+							sb.append(userNetIo.netIn.get()).append("  ");
+							sb.append(userNetIo.netOut.get());
+							totalNetIn = totalNetIn + userNetIo.netIn.get();
+							totalNetOut = totalNetOut + userNetIo.netOut.get();
+							lines.add(sb.toString());
+						}
+					}
+					
+					StringBuffer total = new StringBuffer();
+					total.append("total").append("    ");
+					total.append(totalNetIn).append("    ");
+					total.append(totalNetOut);
+					lines.add(total.toString());
+					return encode(lines);
 					
 				//	SHOW LOG_ERROR
-				} else if ( arg2.equalsIgnoreCase("LOG_ERROR") ) {
+				}  else if ( arg2.equalsIgnoreCase("LOG_ERROR") ) {
 					List<String> lines = showLog(request, "error.log");
 					
 					return encode2( lines );
@@ -726,7 +762,7 @@ public class Manage {
 
 				// SHOW COST
 				} else if (arg2.equalsIgnoreCase("COST")) {
-					Collection<Entry<String, AtomicLong>> entrys = StatUtil.getProcTimeMillsDistribution().entrySet();
+					Collection<Entry<String, AtomicLong>> entrys = StatUtil.getCommandProcTimeMap().entrySet();
 
 					List<String> lines = new ArrayList<String>();
 					for (Entry<String, AtomicLong> entry : entrys) {
@@ -735,8 +771,28 @@ public class Manage {
 						lines.add(sBuffer.toString());
 					}
 					return encode(lines);
+					
+				} else  if(arg2.equalsIgnoreCase("BIGLENGTH")) {
+					List<String> lines = new ArrayList<String>();
+					StringBuffer titleLine = new StringBuffer();
+					titleLine.append("cmd").append(",  ");
+					titleLine.append("key").append(",  ");
+					titleLine.append("length").append(",  ");
+					titleLine.append("count_1k").append(",  ");
+					titleLine.append("count_10k");
+					lines.add(titleLine.toString());
+					for (BigLength bigLength : StatUtil.getBigLengthMap().values()) { 
+						StringBuffer line1 = new StringBuffer();
+						line1.append(bigLength.cmd).append(", ");
+						line1.append(bigLength.key).append(", ");
+						line1.append(bigLength.length.get()).append(", ");
+						line1.append(bigLength.count_1k.get()).append(", ");
+						line1.append(bigLength.count_10k.get());
+						lines.add(line1.toString());
+					}
+					return encode(lines);
 				}
-			
+				
 			// NODE
 			} else if (  (arg1[0] == 'N' || arg1[0] == 'n' ) && 
 						 (arg1[1] == 'O' || arg1[1] == 'o' ) && 

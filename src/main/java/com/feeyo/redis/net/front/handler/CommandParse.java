@@ -24,12 +24,12 @@ public class CommandParse {
 	public static final int AUTO_RESP_CMD	= 7;		// 中间件应答指令
 	public static final int MGETSET_CMD		= 9;		// 中间件加强指令
 	public static final int DEL_CMD			= 10;		// 中间件加强指令
+	public static final int EXISTS_CMD		= 11;		// 中间件加强指令
 	
 	// RW 指令
 	public static final byte WRITE_CMD = 1;
 	public static final byte READ_CMD = 2;
 	
-
 	
 	private static final Map<String, RedisRequestPolicy> _cmds = new HashMap<String, RedisRequestPolicy>();
 	static {		
@@ -46,7 +46,7 @@ public class CommandParse {
 		//Key
 		_cmds.put("DEL", 			new RedisRequestPolicy(DEL_CMD, WRITE_CMD));
 		_cmds.put("DUMP", 			new RedisRequestPolicy(THROUGH_CMD, WRITE_CMD));		//返回被序列化的值
-		_cmds.put("EXISTS", 		new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
+		_cmds.put("EXISTS", 		new RedisRequestPolicy(EXISTS_CMD, READ_CMD));
 		_cmds.put("EXPIRE", 		new RedisRequestPolicy(THROUGH_CMD, WRITE_CMD));
 		_cmds.put("EXPIREAT", 		new RedisRequestPolicy(THROUGH_CMD, WRITE_CMD));
 		_cmds.put("KEYS", 			new RedisRequestPolicy(NO_CLUSTER_CMD, READ_CMD));
@@ -64,7 +64,7 @@ public class CommandParse {
 		_cmds.put("SORT", 			new RedisRequestPolicy(THROUGH_CMD, WRITE_CMD));
 		_cmds.put("TTL", 			new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
 		_cmds.put("TYPE", 			new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
-		_cmds.put("SCAN", 			new RedisRequestPolicy(DISABLED_CMD, WRITE_CMD));
+		_cmds.put("SCAN", 			new RedisRequestPolicy(DISABLED_CMD, READ_CMD));
 		
 		
 		//String
@@ -113,6 +113,7 @@ public class CommandParse {
 		_cmds.put("BLPOP", 				new RedisRequestPolicy(NO_CLUSTER_CMD, READ_CMD));
 		_cmds.put("BRPOP", 				new RedisRequestPolicy(NO_CLUSTER_CMD, READ_CMD));
 		_cmds.put("BRPOPLPUSH", 		new RedisRequestPolicy(NO_CLUSTER_CMD, WRITE_CMD));
+		
 		_cmds.put("LINDEX", 			new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
 		_cmds.put("LINSERT", 			new RedisRequestPolicy(THROUGH_CMD, WRITE_CMD));
 		_cmds.put("LLEN", 				new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
@@ -124,7 +125,9 @@ public class CommandParse {
 		_cmds.put("LSET", 				new RedisRequestPolicy(THROUGH_CMD, WRITE_CMD));
 		_cmds.put("LTRIM", 				new RedisRequestPolicy(THROUGH_CMD, WRITE_CMD));
 		_cmds.put("RPOP", 				new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
+		
 		_cmds.put("RPOPLPUSH", 			new RedisRequestPolicy(NO_CLUSTER_CMD, WRITE_CMD));
+		
 		_cmds.put("RPUSH", 				new RedisRequestPolicy(THROUGH_CMD, WRITE_CMD));
 		_cmds.put("RPUSHX", 			new RedisRequestPolicy(THROUGH_CMD, WRITE_CMD));
 		
@@ -134,7 +137,7 @@ public class CommandParse {
 		_cmds.put("SISMEMBER", 			new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
 		_cmds.put("SMEMBERS", 			new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
 		_cmds.put("SMOVE", 				new RedisRequestPolicy(THROUGH_CMD, WRITE_CMD));
-		_cmds.put("SPOP", 				new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
+		_cmds.put("SPOP", 				new RedisRequestPolicy(THROUGH_CMD, WRITE_CMD));
 		_cmds.put("SRANDMEMBER", 		new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
 		_cmds.put("SREM", 				new RedisRequestPolicy(THROUGH_CMD, WRITE_CMD));
 		_cmds.put("SSCAN", 				new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
@@ -164,7 +167,7 @@ public class CommandParse {
 		_cmds.put("ZSCORE", 			new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
 		_cmds.put("ZUNIONSTORE", 		new RedisRequestPolicy(NO_CLUSTER_CMD, WRITE_CMD));
 		_cmds.put("ZINTERSTORE", 		new RedisRequestPolicy(NO_CLUSTER_CMD, WRITE_CMD));
-		_cmds.put("ZSCAN", 				new RedisRequestPolicy(THROUGH_CMD, WRITE_CMD));
+		_cmds.put("ZSCAN", 				new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
 		_cmds.put("ZRANGEBYLEX", 		new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
 		_cmds.put("ZLEXCOUNT", 			new RedisRequestPolicy(THROUGH_CMD, READ_CMD));
 		_cmds.put("ZREMRANGEBYLEX", 	new RedisRequestPolicy(THROUGH_CMD, WRITE_CMD));

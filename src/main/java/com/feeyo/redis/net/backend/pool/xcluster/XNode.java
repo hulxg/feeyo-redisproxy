@@ -1,7 +1,6 @@
-package com.feeyo.redis.net.backend.pool.customcluster;
+package com.feeyo.redis.net.backend.pool.xcluster;
 
 import com.feeyo.redis.net.backend.pool.PhysicalNode;
-import com.feeyo.redis.nio.util.TimeUtil;
 import com.feeyo.util.jedis.JedisConnection;
 import com.feeyo.util.jedis.RedisCommand;
 import com.feeyo.util.jedis.exception.JedisConnectionException;
@@ -11,15 +10,44 @@ import com.feeyo.util.jedis.exception.JedisConnectionException;
  *
  * @author Tr!bf wangyamin@variflight.com
  */
-public class CustomClusterNode {
+public class XNode {
+	
+	// 
+	private String ip;
+	private int port;
+	private String suffix;		// 依赖后缀做路由
+	
+	
     private PhysicalNode physicalNode = null;
-//    private PhysicalNode phyNodeFollow = null;
 
     private volatile int heartbeatRetry = 0;
     private volatile int heartbeatStatus = 1;
-    private volatile long heartbeatTime = -1;
 
-    public PhysicalNode getPhysicalNode() {
+	public String getIp() {
+		return ip;
+	}
+
+	public void setIp(String ip) {
+		this.ip = ip;
+	}
+
+	public int getPort() {
+		return port;
+	}
+
+	public void setPort(int port) {
+		this.port = port;
+	}
+
+	public String getSuffix() {
+		return suffix;
+	}
+
+	public void setSuffix(String suffix) {
+		this.suffix = suffix;
+	}
+
+	public PhysicalNode getPhysicalNode() {
         return physicalNode;
     }
 
@@ -49,7 +77,6 @@ public class CustomClusterNode {
                 heartbeatStatus = -1;
             }
         } finally {
-            heartbeatTime = TimeUtil.currentTimeMillis();
             if ( conn != null ) {
                 conn.disconnect();
             }
@@ -59,4 +86,5 @@ public class CustomClusterNode {
             physicalNode.clearConnections("this node exception, automatic reload", true);
         }
     }
+
 }

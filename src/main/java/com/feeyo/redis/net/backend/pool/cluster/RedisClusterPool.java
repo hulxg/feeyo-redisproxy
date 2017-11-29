@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 
 import com.feeyo.redis.config.PoolCfg;
@@ -252,9 +253,12 @@ public class RedisClusterPool extends AbstractPool {
 		return true;
 	}
 
+	private Random random = new Random();
+	
 	@Override
 	public PhysicalNode getPhysicalNode() {		
-		throw new UnsupportedOperationException("Not implemented");
+		int slot = random.nextInt( 16383 );
+		return getPhysicalNodeBySlot( slot );	// default slot 0
 	}
 
 	@Override
@@ -481,10 +485,9 @@ public class RedisClusterPool extends AbstractPool {
 	public void heartbeatCheck(long timeout) {	
 		
 		// 心跳
-		for (Map.Entry<String, ClusterNode> entry : masters.entrySet()) {			
-			ClusterNode clusterNode = entry.getValue();
-			PhysicalNode physicalNode = clusterNode.getPhysicalNode();
+		for (ClusterNode clusterNode : masters.values()) {			
 			
+			PhysicalNode physicalNode = clusterNode.getPhysicalNode();
 			this.heartbeatCheck( physicalNode, timeout );
 		}
 	}

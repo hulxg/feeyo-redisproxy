@@ -2,14 +2,15 @@ package com.feeyo.redis.net.backend.pool;
 
 import com.feeyo.redis.config.PoolCfg;
 import com.feeyo.redis.net.backend.pool.cluster.RedisClusterPool;
-import com.feeyo.redis.net.backend.pool.customcluster.RedisCustomClusterPool;
+import com.feeyo.redis.net.backend.pool.xcluster.XClusterPool;
 
 /**
  * redis [standalone, cluster, custom cluster] pool factory
  *
  * @author Tr!bf wangyamin@variflight.com
  */
-public class RedisPoolFactory {
+public class PoolFactory {
+	
     public static AbstractPool createPoolByCfg(PoolCfg poolCfg) {
         AbstractPool pool;
         switch (poolCfg.getType()) {
@@ -20,7 +21,7 @@ public class RedisPoolFactory {
                 pool = new RedisClusterPool( poolCfg );
                 break;
             case 2:
-                pool = new RedisCustomClusterPool( poolCfg );
+                pool = new XClusterPool( poolCfg );
                 break;
             default:
                 pool = new RedisStandalonePool( poolCfg );

@@ -6,7 +6,6 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
-import com.feeyo.util.NetworkUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,7 +15,7 @@ import com.feeyo.redis.config.UserCfg;
 import com.feeyo.redis.config.loader.zk.ZkClient;
 import com.feeyo.redis.net.backend.RedisBackendConnectionFactory;
 import com.feeyo.redis.net.backend.pool.AbstractPool;
-import com.feeyo.redis.net.backend.pool.RedisPoolFactory;
+import com.feeyo.redis.net.backend.pool.PoolFactory;
 import com.feeyo.redis.net.front.RedisFrontendConnectionFactory;
 import com.feeyo.redis.nio.NIOAcceptor;
 import com.feeyo.redis.nio.NIOConnector;
@@ -28,6 +27,7 @@ import com.feeyo.redis.nio.buffer.BufferPool;
 import com.feeyo.redis.nio.buffer.bucket.ByteBufferBucketPool;
 import com.feeyo.redis.virtualmemory.VirtualMemoryService;
 import com.feeyo.util.ExecutorUtil;
+import com.feeyo.util.NetworkUtil;
 import com.feeyo.util.keepalived.KeepAlived;
 
 public class RedisEngineCtx {
@@ -141,7 +141,7 @@ public class RedisEngineCtx {
         
 		this.poolMap = new HashMap<Integer, AbstractPool>( poolCfgMap.size() );
 		for (final PoolCfg poolCfg : poolCfgMap.values()) {
-			AbstractPool pool = RedisPoolFactory.createPoolByCfg(poolCfg);
+			AbstractPool pool = PoolFactory.createPoolByCfg(poolCfg);
 			pool.startup();
 			this.poolMap.put(pool.getId(), pool);
 		}
@@ -157,6 +157,7 @@ public class RedisEngineCtx {
         Iterator<String> it = userMap.keySet().iterator();
         String authString  = it.hasNext() ? it.next() : "";
         KeepAlived.check(port, authString);
+        
 		// 7, zk startup
 		ZkClient.INSTANCE().init();
 		ZkClient.INSTANCE().createZkInstanceIdByIpPort(NetworkUtil.getIp()+":"+port);
@@ -201,7 +202,7 @@ public class RedisEngineCtx {
 			// 3 连接池自检 
 			Map<Integer, AbstractPool> newPoolMap = new HashMap<Integer, AbstractPool>( newPoolCfgMap.size() );
 			for (final PoolCfg poolCfg : newPoolCfgMap.values()) {
-				AbstractPool pool = RedisPoolFactory.createPoolByCfg(poolCfg);
+				AbstractPool pool = PoolFactory.createPoolByCfg(poolCfg);
 				newPoolMap.put(pool.getId(), pool);
 	        }
 			
@@ -331,7 +332,7 @@ public class RedisEngineCtx {
 			// 2. 初始化新的 pool
 			Map<Integer, AbstractPool> newPoolMap = new HashMap<Integer, AbstractPool>( newPoolCfgMap.size() );
 			for (final PoolCfg poolCfg : newPoolCfgMap.values()) {
-				AbstractPool pool = RedisPoolFactory.createPoolByCfg(poolCfg);
+				AbstractPool pool = PoolFactory.createPoolByCfg(poolCfg);
 				newPoolMap.put(pool.getId(), pool);
 			}
 
