@@ -28,6 +28,7 @@ import com.feeyo.redis.engine.manage.stat.BigKeyCollector.BigKey;
 import com.feeyo.redis.engine.manage.stat.BigLengthCollector.BigLength;
 import com.feeyo.redis.engine.manage.stat.CmdAccessCollector.Command;
 import com.feeyo.redis.engine.manage.stat.NetFlowCollector.UserNetFlow;
+import com.feeyo.redis.engine.manage.stat.SlowKeyColletor.SlowKey;
 import com.feeyo.redis.engine.manage.stat.StatUtil;
 import com.feeyo.redis.engine.manage.stat.StatUtil.AccessStatInfoResult;
 import com.feeyo.redis.net.backend.RedisBackendConnection;
@@ -102,8 +103,11 @@ public class Manage {
 	 *  SHOW CONN
 	 *  SHOW USER_CONN
 	 *  SHOW BUFFER
+	 *  
 	 *  SHOW BIGKEY
 	 *  SHOW BIGLENGTH
+	 *  SHOW SLOWKEY
+	 *  
 	 *  SHOW CMD
 	 *  SHOW VER
 	 *  SHOW NET_IO 该指令兼容过去的 SHOW NETBYTES
@@ -488,11 +492,12 @@ public class Manage {
 				} else if ( arg2.equalsIgnoreCase("BIGKEY") ) {
 					
 					List<String> lines = new ArrayList<String>();						
-					Collection<Entry<String, BigKey>> entrys = StatUtil.getBigKeyMap().entrySet();
-					for(Entry<String, BigKey> e : entrys) {
-						BigKey bigkey = e.getValue();
+					for(BigKey bigkey: StatUtil.getBigKeys()) {
 						StringBuffer sBuffer = new StringBuffer();
-						sBuffer.append( bigkey.cmd ).append("  ").append( bigkey.key ).append( "  " ).append( bigkey.size ).append( "  " ).append( bigkey.count.get() );
+						sBuffer.append( bigkey.cmd ).append("  ");
+						sBuffer.append( bigkey.key ).append( "  " );
+						sBuffer.append( bigkey.size ).append( "  " );
+						sBuffer.append( bigkey.count.get() );
 						lines.add( sBuffer.toString()  );
 					}			
 					return encode( lines );
@@ -625,23 +630,25 @@ public class Manage {
 					
 					long totalNetIn = 0;
 					long totalNetOut = 0;
-					for (Map.Entry<String, UserNetFlow> entry : StatUtil.getUserFlowSet()) { 
+					for (Map.Entry<String, UserNetFlow> entry : StatUtil.getUserFlowMap().entrySet()) { 
 						if (!StatUtil.STAT_KEY.equals(entry.getKey())) {
 							StringBuffer sb = new StringBuffer();
 							UserNetFlow userNetIo = entry.getValue();
 							sb.append(userNetIo.password).append("  ");
-							sb.append(userNetIo.netIn.get()).append("  ");
-							sb.append(userNetIo.netOut.get());
+							sb.append( JavaUtils.bytesToString2( userNetIo.netIn.get() ) ).append("  ");
+							sb.append( JavaUtils.bytesToString2( userNetIo.netOut.get() ) );
 							totalNetIn = totalNetIn + userNetIo.netIn.get();
 							totalNetOut = totalNetOut + userNetIo.netOut.get();
+							
 							lines.add(sb.toString());
 						}
 					}
 					
 					StringBuffer total = new StringBuffer();
 					total.append("total").append("    ");
-					total.append(totalNetIn).append("    ");
-					total.append(totalNetOut);
+					total.append( JavaUtils.bytesToString2(totalNetIn) ).append("    ");
+					total.append( JavaUtils.bytesToString2(totalNetOut) );
+					
 					lines.add(total.toString());
 					return encode(lines);
 					
@@ -771,7 +778,8 @@ public class Manage {
 						lines.add(sBuffer.toString());
 					}
 					return encode(lines);
-					
+				
+				// SHOW BIGLENGTH
 				} else  if(arg2.equalsIgnoreCase("BIGLENGTH")) {
 					List<String> lines = new ArrayList<String>();
 					StringBuffer titleLine = new StringBuffer();
@@ -788,6 +796,23 @@ public class Manage {
 						line1.append(bigLength.length.get()).append(", ");
 						line1.append(bigLength.count_1k.get()).append(", ");
 						line1.append(bigLength.count_10k.get());
+						lines.add(line1.toString());
+					}
+					return encode(lines);
+				
+				// SHOW BIGLENGTH
+				} else if (arg2.equalsIgnoreCase("SLOWKEY")) {
+					List<String> lines = new ArrayList<String>();
+					StringBuffer titleLine = new StringBuffer();
+					titleLine.append("cmd").append(",  ");
+					titleLine.append("key").append(",  ");
+					titleLine.append("count");
+					lines.add(titleLine.toString());
+					for (SlowKey slowKey : StatUtil.getSlowKey()) {
+						StringBuffer line1 = new StringBuffer();
+						line1.append(slowKey.cmd).append(", ");
+						line1.append(slowKey.key).append(", ");
+						line1.append(slowKey.count);
 						lines.add(line1.toString());
 					}
 					return encode(lines);

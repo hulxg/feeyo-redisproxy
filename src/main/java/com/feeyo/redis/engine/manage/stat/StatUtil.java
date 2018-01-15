@@ -3,8 +3,7 @@ package com.feeyo.redis.engine.manage.stat;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
+import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
@@ -17,12 +16,16 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.feeyo.redis.engine.RedisEngineCtx;
 import com.feeyo.redis.engine.manage.stat.BigKeyCollector.BigKey;
 import com.feeyo.redis.engine.manage.stat.BigLengthCollector.BigLength;
 import com.feeyo.redis.engine.manage.stat.CmdAccessCollector.Command;
 import com.feeyo.redis.engine.manage.stat.NetFlowCollector.UserNetFlow;
+import com.feeyo.redis.engine.manage.stat.SlowKeyColletor.SlowKey;
 import com.feeyo.redis.nio.NetSystem;
 import com.feeyo.redis.nio.util.TimeUtil;
+import com.feeyo.util.MailUtil;
+import com.feeyo.util.NetworkUtil;
 
 /**
  * 数据埋点收集器
@@ -57,9 +60,7 @@ public class StatUtil {
 	private static CmdAccessCollector cmdAccessCollector = new CmdAccessCollector();
 	private static BigKeyCollector bigKeyCollector = new BigKeyCollector();
 	private static BigLengthCollector bigLengthCollector = new BigLengthCollector();
-	
-	
-	private static StatNotification notification = new StatNotification();
+	private static SlowKeyColletor slowKeyCollector = new SlowKeyColletor();
 	
 	static {
 		
@@ -67,10 +68,12 @@ public class StatUtil {
 		addCollector( cmdAccessCollector );
 		addCollector( bigKeyCollector );
 		addCollector( bigLengthCollector );
+		addCollector( slowKeyCollector );
 		
 		scheduledFuture = executorService.scheduleAtFixedRate(new Runnable() {
 			@Override
 			public void run() {		
+				
 				// 定时计算
 				long currentTimeMillis = System.currentTimeMillis();
 		        for (Map.Entry<String, AccessStatInfo> entry : accessStats.entrySet()) {     
@@ -93,21 +96,89 @@ public class StatUtil {
 					//
 					if ( zeroTimeMillis > 0 ) {
 						
-						long sum = 0;
-						Set<Entry<String, Command>> entrys = StatUtil.getCommandCountMap().entrySet();
-						for (Entry<String, Command> entry : entrys) {	
-							Long count = entry.getValue().count.get();			
-							if ( count != null )
-								sum += count;
-						}
-						
-						LOGGER.info("Through cmd count:" + sum);
-						
-						
 						// send mail
-						notification.sendMail();
+						// ##################################################################################
+						try {
+							
+							
+							StringBuffer subject = new StringBuffer( 50 );
+							subject.append(" ###RedisProxy report, host:" ).append( NetworkUtil.getLocalAddress() );
+							
+							StringBuffer body = new StringBuffer( 500 );
+							
+							// COMMAND 
+							long sum = 0;
+							body.append("#############   command asscess  #################\n");
+							body.append("|    cmd    |     count     |");
+							for (Command command : cmdAccessCollector.getCommandCountMap().values() ) {
+								body.append("\n");
+								body.append("|    ");
+								body.append(command.cmd).append("    |    ");
+								body.append(command.count.get() ).append("    |    ");
+	
+								sum += command.count.get();
+							}
+							body.append("\r\n");
+							body.append("\r\n");
+							
+							LOGGER.info("Through cmd count:" + sum);
+							
+							
+							// SLOW KEY
+							body.append("#############   slowkey status ( >50ms )   #################\n");
+							body.append("|    cmd    |     key     |    count    |");
+							for (SlowKey slowKey : slowKeyCollector.getSlowKeys() ) {
+								body.append("\n");
+								body.append("|    ");
+								body.append(slowKey.cmd).append("    |    ");
+								body.append(slowKey.key).append("    |    ");
+								body.append(slowKey.count).append("    |");
+							}
+							body.append("\r\n");
+							body.append("\r\n");
+							
+							// BIG KEY
+							body.append("#############   bigkey status   #################\n");
+							body.append("|    cmd    |     key     |    size    |    count    |");
+							for (BigKey bigkey : bigKeyCollector.getBigkeys() ) {
+								body.append("\n");
+								body.append("|    ");
+								body.append(bigkey.cmd).append("    |    ");
+								body.append(bigkey.key).append("    |    ");
+								body.append(bigkey.size).append("    |    ");
+								body.append(bigkey.count).append("    |");
+							}
+							body.append("\r\n");
+							body.append("\r\n");
+	
+							// BIG LENGTH
+							body.append("#############   biglenght status   #################\n");
+							body.append("|    key    |     type     |    length    |    count_1k    |    count_10k    |");
+							for (BigLength bigLength : bigLengthCollector.getBigLengthMap().values() ) {
+								body.append("\n");
+								body.append("|    ");
+								body.append(bigLength.key).append("    |    ");
+								body.append(bigLength.cmd).append("    |    ");
+								body.append(bigLength.length).append("    |    ");
+								body.append(bigLength.count_1k).append("    |    ");
+								body.append(bigLength.count_10k).append("    |");
+							}
+							body.append("\r\n");
+							body.append("\r\n");
+							
+							String[] attachments = null;
+							
+							Properties prop = RedisEngineCtx.INSTANCE().getMailProperties();
+							MailUtil.send(prop, subject.toString(), body.toString(), attachments);
+							
+							
+						} catch(Throwable t) {
+							//ignore
+						}
+						// ##################################################################################
 						
-						// clear temp data
+						
+						// 触发0 点事件
 						for(StatCollector listener: collectors) {
 							try {
 								listener.onScheduleToZore();
@@ -115,14 +186,11 @@ public class StatUtil {
 								LOGGER.error("error:",e);
 							}
 						}
-						notification.sendMailDailyDiscardMsg();
-						
 					}
 					
 					zeroTimeMillis = cal.getTimeInMillis();
-					
-					
 		        }
+		        
 		        
 		        for(StatCollector listener: collectors) {
 					try {
@@ -170,10 +238,6 @@ public class StatUtil {
 			public void run() {
 				
 				
-		        
-
-				
-				
 				long currentTimeMillis = TimeUtil.currentTimeMillis();
 				
 		        // QPS、SLOW、BYTES
@@ -188,8 +252,6 @@ public class StatUtil {
 		            
 		        } catch (Exception e) {
 		        }
-		        
-		      
 		        
 
 		    	//
@@ -221,8 +283,8 @@ public class StatUtil {
         return totalResults;
     }
     
-    public static ConcurrentHashMap<String, BigKey> getBigKeyMap() {
-    	return bigKeyCollector.getBigkeyMap();
+    public static List<BigKey> getBigKeys() {
+    	return bigKeyCollector.getBigkeys();
     }
     
     public static ConcurrentHashMap<String, BigLength> getBigLengthMap() {
@@ -237,8 +299,12 @@ public class StatUtil {
     	return cmdAccessCollector.getCommandCountMap();
     }
     
-    public static Set<Entry<String, UserNetFlow>> getUserFlowSet() {
-    	return netflowCollector.getUserFlowSet();
+    public static ConcurrentHashMap<String, UserNetFlow> getUserFlowMap() {
+    	return netflowCollector.getUserFlowMap();
+    }
+    
+    public static List<SlowKey> getSlowKey() {
+    	return slowKeyCollector.getSlowKeys();
     }
     
   
